@@ -1,5 +1,5 @@
 # http-client
-http asynchronous request based libcurl.
+HTTP asynchronous request library based libcurl.
 
 # Qucik start
 ```c++
