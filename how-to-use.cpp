@@ -1,9 +1,4 @@
-# http-client
-http asynchronous request based libcurl.
-
-# Qucik start
-```c++
-#include <iostream>
+﻿#include <iostream>
 #include "HttpClient.h"
 
 using namespace Http;
@@ -32,5 +27,3 @@ int main() {
 
   return 0;
 }
-
-```
