@@ -1,3 +1,17 @@
+/*******************************************************************************
+* Copyright (C) 2021 - 2026, winsoft666, <winsoft666@outlook.com>.
+*
+* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+*
+* Expect bugs
+*
+* Please use and enjoy. Please let me know of any bugs/improvements
+* that you have found/implemented and I will fix/incorporate them into this
+* file.
+*******************************************************************************/
+
 #include "HttpClient.h"
 #include <assert.h>
 #include "curl/curl.h"
@@ -8,7 +22,8 @@ namespace Http {
 // RequestDatagram
 //////////////////////////////////////////////////////////////////////////
 
-RequestDatagram::RequestDatagram() : method_(METHOD::GET), bodyData_(nullptr), bodySize_(0) {}
+RequestDatagram::RequestDatagram()
+    : method_(METHOD::GET), bodyData_(nullptr), bodySize_(0) {}
 
 RequestDatagram::RequestDatagram(const RequestDatagram& that) {
   url_ = that.url_;
@@ -102,7 +117,8 @@ void RequestDatagram::SetBody(const void* data, size_t dataSize) {
 // ResponseDatagram
 //////////////////////////////////////////////////////////////////////////
 
-ResponseDatagram::ResponseDatagram() : code_(0), bodyData_(nullptr), bodySize_(0), bodyCapacity_(0) {}
+ResponseDatagram::ResponseDatagram()
+    : code_(0), bodyData_(nullptr), bodySize_(0), bodyCapacity_(0) {}
 
 ResponseDatagram::ResponseDatagram(const ResponseDatagram& that) {
   code_ = that.code_;
@@ -158,7 +174,8 @@ Headers ResponseDatagram::GetHeaders() const {
   return headers_;
 }
 
-void ResponseDatagram::AddHeader(const std::string& key, const std::string& value) {
+void ResponseDatagram::AddHeader(const std::string& key,
+                                 const std::string& value) {
   headers_.insert(std::make_pair(key, value));
 }
 
@@ -202,7 +219,10 @@ Client::Cleanup::~Cleanup() {
 
 bool Client::initialized_ = false;
 
-static size_t __BodyWriteCallback__(void* data, size_t size, size_t nmemb, void* userdata) {
+static size_t __BodyWriteCallback__(void* data,
+                                    size_t size,
+                                    size_t nmemb,
+                                    void* userdata) {
   ResponseDatagram* rspDg = static_cast<ResponseDatagram*>(userdata);
   size_t total = size * nmemb;
   assert(rspDg);
@@ -215,7 +235,8 @@ static size_t __BodyWriteCallback__(void* data, size_t size, size_t nmemb, void*
   size_t remainBufSize = rspDg->GetBodyCapacity() - oldBodySize;
 
   if (remainBufSize < total) {
-    size_t newBufSize = oldBodySize + (total > kBodyBufferStep ? total * 2 : kBodyBufferStep);
+    size_t newBufSize =
+        oldBodySize + (total > kBodyBufferStep ? total * 2 : kBodyBufferStep);
     void* buf = malloc(newBufSize);
     assert(buf);
     if (!buf) {
@@ -236,7 +257,10 @@ static size_t __BodyWriteCallback__(void* data, size_t size, size_t nmemb, void*
   return total;
 }
 
-size_t __HeaderWriteCallback__(char* buffer, size_t size, size_t nitems, void* userdata) {
+size_t __HeaderWriteCallback__(char* buffer,
+                               size_t size,
+                               size_t nitems,
+                               void* userdata) {
   ResponseDatagram* rspDg = static_cast<ResponseDatagram*>(userdata);
   assert(rspDg);
   if (!rspDg) {
@@ -292,8 +316,12 @@ void Client::Uninitialize() {
   }
 }
 
-bool Client::Request(const RequestDatagram& reqDg, RequestResult reqRet, int connectionTimeout /*= 5000*/, int retry /*= 0*/) {
-  if (future_.valid() && future_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+bool Client::Request(const RequestDatagram& reqDg,
+                     RequestResult reqRet,
+                     int connectionTimeout /*= 5000*/,
+                     int retry /*= 0*/) {
+  if (future_.valid() && future_.wait_for(std::chrono::milliseconds(0)) !=
+                             std::future_status::ready) {
     return false;
   }
   abort_.store(false);
@@ -308,35 +336,53 @@ bool Client::Request(const RequestDatagram& reqDg, RequestResult reqRet, int con
   return true;
 }
 
-int Client::DoRequest(const RequestDatagram& reqDg, ResponseDatagram& rspDg, int connectionTimeout, int retry) {
+int Client::DoRequest(const RequestDatagram& reqDatagram,
+                      ResponseDatagram& rspDatagram,
+                      int connectionTimeout,
+                      int retry) {
   CURL* pCURL = static_cast<CURL*>(curl_);
   if (!pCURL) {
-    return -1;
+    return NO_CURL_HANDLE;
   }
-  curl_easy_setopt(pCURL, CURLOPT_URL, reqDg.GetUrl().c_str());
+  curl_easy_setopt(pCURL, CURLOPT_URL, reqDatagram.GetUrl().c_str());
   curl_easy_setopt(pCURL, CURLOPT_HEADER, 1);
+  curl_easy_setopt(pCURL, CURLOPT_NOBODY, 0);
   curl_easy_setopt(pCURL, CURLOPT_NOSIGNAL, 1);
   curl_easy_setopt(pCURL, CURLOPT_CONNECTTIMEOUT_MS, connectionTimeout);
   curl_easy_setopt(pCURL, CURLOPT_SSL_VERIFYPEER, 0L);
   curl_easy_setopt(pCURL, CURLOPT_SSL_VERIFYHOST, 0L);
 
-  switch (reqDg.GetMethod()) {
+  switch (reqDatagram.GetMethod()) {
     case RequestDatagram::METHOD::GET:
       curl_easy_setopt(pCURL, CURLOPT_POST, 0);
       break;
     case RequestDatagram::METHOD::POST:
       curl_easy_setopt(pCURL, CURLOPT_POST, 1);
       break;
-    case RequestDatagram::METHOD::HEADER:
+    case RequestDatagram::METHOD::HEAD:
       curl_easy_setopt(pCURL, CURLOPT_NOBODY, 1);
+      break;
+    case RequestDatagram::METHOD::CONNECT:
+      curl_easy_setopt(pCURL, CURLOPT_CUSTOMREQUEST, "CONNECT");
+      break;
+    case RequestDatagram::METHOD::DEL:
+      curl_easy_setopt(pCURL, CURLOPT_CUSTOMREQUEST, "DELETE");
+      break;
+    case RequestDatagram::METHOD::OPTIONS:
+      curl_easy_setopt(pCURL, CURLOPT_CUSTOMREQUEST, "OPTIONS");
+      break;
+    case RequestDatagram::METHOD::PATCH:
+      curl_easy_setopt(pCURL, CURLOPT_CUSTOMREQUEST, "PATCH");
+      break;
+    case RequestDatagram::METHOD::PUT:
+      curl_easy_setopt(pCURL, CURLOPT_CUSTOMREQUEST, "PUT");
       break;
     default:
       assert(false);
-      return -2;
   }
 
   struct curl_slist* headerChunk = nullptr;
-  const Headers& headers = reqDg.GetHeaders();
+  const Headers& headers = reqDatagram.GetHeaders();
   if (headers.size() > 0) {
     for (auto& it : headers) {
       std::string headerStr = it.first + ": " + it.second;
@@ -345,16 +391,22 @@ int Client::DoRequest(const RequestDatagram& reqDg, ResponseDatagram& rspDg, int
     curl_easy_setopt(pCURL, CURLOPT_HTTPHEADER, headerChunk);
   }
 
-  if (reqDg.GetBodySize() > 0 && reqDg.GetBodyData()) {
-    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDS, reqDg.GetBodyData());
-    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDSIZE, reqDg.GetBodySize());
+  if (reqDatagram.GetBodySize() > 0 && reqDatagram.GetBodyData()) {
+    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDS, reqDatagram.GetBodyData());
+    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDSIZE, reqDatagram.GetBodySize());
   }
 
-  curl_easy_setopt(pCURL, CURLOPT_WRITEFUNCTION, __BodyWriteCallback__);
-  curl_easy_setopt(pCURL, CURLOPT_WRITEDATA, (void*)&rspDg);
+  if (reqDatagram.GetMethod() != RequestDatagram::METHOD::HEAD) {
+    curl_easy_setopt(pCURL, CURLOPT_WRITEFUNCTION, __BodyWriteCallback__);
+    curl_easy_setopt(pCURL, CURLOPT_WRITEDATA, (void*)&rspDatagram);
+  }
 
   curl_easy_setopt(pCURL, CURLOPT_HEADERFUNCTION, __HeaderWriteCallback__);
-  curl_easy_setopt(pCURL, CURLOPT_HEADERDATA, (void*)&rspDg);
+  curl_easy_setopt(pCURL, CURLOPT_HEADERDATA, (void*)&rspDatagram);
+
+  if (proxy_.length() > 0) {
+    curl_easy_setopt(pCURL, CURLOPT_PROXY, (const char*)proxy_.c_str());
+  }
 
   CURLcode ccode = CURL_LAST;
   do {
@@ -370,13 +422,13 @@ int Client::DoRequest(const RequestDatagram& reqDg, ResponseDatagram& rspDg, int
 
   if (ccode != CURLE_OK) {
     if (abort_.load())
-      return -4;
+      return USER_ABORT;
     return ccode;
   }
 
   int rspCode = 0;
   if (CURLE_OK == curl_easy_getinfo(pCURL, CURLINFO_RESPONSE_CODE, &rspCode)) {
-    rspDg.SetCode(rspCode);
+    rspDatagram.SetCode(rspCode);
   }
 
   if (headerChunk) {
@@ -398,7 +450,16 @@ void Client::Abort() {
 bool Client::Wait(int ms) {
   if (!future_.valid())
     return true;
-  return future_.wait_for(std::chrono::milliseconds(ms)) == std::future_status::ready;
+  return future_.wait_for(std::chrono::milliseconds(ms)) ==
+         std::future_status::ready;
+}
+
+void Client::SetProxy(const std::string& proxy) {
+  proxy_ = proxy;
+}
+
+std::string Client::GetProxy() const {
+  return proxy_;
 }
 
 bool IsHttps(const std::string& url) {

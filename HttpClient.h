@@ -1,5 +1,19 @@
-#ifndef HTTP_HELPER_H_
-#define HTTP_HELPER_H_
+/*******************************************************************************
+* Copyright (C) 2021 - 2026, winsoft666, <winsoft666@outlook.com>.
+*
+* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+*
+* Expect bugs
+*
+* Please use and enjoy. Please let me know of any bugs/improvements
+* that you have found/implemented and I will fix/incorporate them into this
+* file.
+*******************************************************************************/
+
+#ifndef HTTP_CLIENT_H_
+#define HTTP_CLIENT_H_
 #pragma once
 
 #include <string>
@@ -7,11 +21,22 @@
 #include <future>
 
 namespace Http {
-typedef std::multimap<std::string, std::string> Headers;
+using Headers = std::multimap<std::string, std::string>;
 
+// HTTP Request Datagram
 class RequestDatagram {
  public:
-  enum class METHOD { GET, POST, HEADER };
+  enum class METHOD {
+    GET = 0,
+    POST,
+    HEAD,
+    DEL, // DELETE conflict with winnt.h DELETE macro.
+    PUT,
+    PATCH,
+    OPTIONS,
+    TRACE,
+    CONNECT
+  };
   RequestDatagram();
   RequestDatagram(const RequestDatagram& that);
   RequestDatagram& operator=(const RequestDatagram& that);
@@ -38,6 +63,7 @@ class RequestDatagram {
   std::string url_;
 };
 
+// HTTP Response Datagram
 class ResponseDatagram {
  public:
   ResponseDatagram();
@@ -68,9 +94,16 @@ class ResponseDatagram {
 
 bool IsHttps(const std::string& url);
 
+// Http Client
 class Client {
  public:
-  using RequestResult = std::function<void(int, const ResponseDatagram&)>;
+  using RequestResult =
+      std::function<void(int,  // >=0 is CURLcode, <0 is custom error codes.
+                         const ResponseDatagram&  // HTTP response datagram
+                         )>;
+  // Custom error code
+  enum : int { NO_CURL_HANDLE = -1, USER_ABORT = -2 };
+
   Client();
   Client(const Client&) = delete;
   Client& operator=(const Client&) = delete;
@@ -87,26 +120,43 @@ class Client {
   };
 
  public:
-  // asynchronous http request
-  bool Request(const RequestDatagram& reqDg, RequestResult ret, int connectionTimeout = 5000, int retry = 0);
+  // Issue an asynchronous HTTP request.
+  // Return value:
+  //   The return value does not indicate that the request is finished.
+  //   Return false only when has another request is doing, other case return true.
+  //
+  bool Request(const RequestDatagram& reqDg,
+               RequestResult ret,
+               int connectionTimeout = 5000,  // ms
+               int retry = 0);
 
-  // abort http request
+  // Abort the current HTTP request.
+  //
   void Abort();
 
-  // wait http request finish
+  // Wait for the current HTTP request to be finished.
   // Return value:
-  // true - request has been finished or request be finished within special time(ms).
-  // false - timeout, request not be finished.
+  //   true  - request has finished or request finished with the special time(ms).
+  //   false - timeout, the request did not finished with the special time(ms).
+  //
   bool Wait(int ms);
 
+  // Set HTTP proxy
+  void SetProxy(const std::string& proxy);
+  std::string GetProxy() const;
+
  private:
-  int DoRequest(const RequestDatagram& reqDg, ResponseDatagram& rspDg, int connectionTimeout, int retry);
+  int DoRequest(const RequestDatagram& reqDg,
+                ResponseDatagram& rspDg,
+                int connectionTimeout,
+                int retry);
 
  private:
   static bool initialized_;
   void* curl_;
   std::future<void> future_;
   std::atomic_bool abort_;
+  std::string proxy_;
 };
 }  // namespace Http
-#endif  // !HTTP_HELPER_H_
+#endif  // !HTTP_CLIENT_H_
