@@ -30,7 +30,7 @@ class RequestDatagram {
     GET = 0,
     POST,
     HEAD,
-    DEL, // DELETE conflict with winnt.h DELETE macro.
+    DEL,  // DELETE conflict with winnt.h DELETE macro.
     PUT,
     PATCH,
     OPTIONS,
@@ -123,10 +123,11 @@ class Client {
   // Issue an asynchronous HTTP request.
   // Return value:
   //   The return value does not indicate that the request is finished.
-  //   Return false only when has another request is doing, other case return true.
+  //   Return false only when has another request is doing, other case will return true.
   //
-  bool Request(const RequestDatagram& reqDg,
+  bool Request(const RequestDatagram& reqDatagram,
                RequestResult ret,
+               bool allowRedirect = true,
                int connectionTimeout = 5000,  // ms
                int retry = 0);
 
@@ -148,6 +149,7 @@ class Client {
  private:
   int DoRequest(const RequestDatagram& reqDg,
                 ResponseDatagram& rspDg,
+                bool allowRedirect,
                 int connectionTimeout,
                 int retry);
 

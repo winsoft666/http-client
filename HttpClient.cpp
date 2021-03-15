@@ -277,7 +277,7 @@ size_t __HeaderWriteCallback__(char* buffer,
     return total;
   }
 
-  std::string key = header.substr(0, pos - 1);
+  std::string key = header.substr(0, pos);
   std::string value = header.substr(pos + 2, header.length() - pos - 4);
 
   rspDg->AddHeader(key, value);
@@ -316,8 +316,9 @@ void Client::Uninitialize() {
   }
 }
 
-bool Client::Request(const RequestDatagram& reqDg,
+bool Client::Request(const RequestDatagram& reqDatagram,
                      RequestResult reqRet,
+                     bool allowRedirect /* = true*/,
                      int connectionTimeout /*= 5000*/,
                      int retry /*= 0*/) {
   if (future_.valid() && future_.wait_for(std::chrono::milliseconds(0)) !=
@@ -326,10 +327,11 @@ bool Client::Request(const RequestDatagram& reqDg,
   }
   abort_.store(false);
   future_ = std::async(std::launch::async, [=]() {
-    ResponseDatagram rspDg;
-    int ccode = DoRequest(reqDg, rspDg, connectionTimeout, retry);
+    ResponseDatagram rspDatagram;
+    int ccode = DoRequest(reqDatagram, rspDatagram, allowRedirect,
+                          connectionTimeout, retry);
     if (reqRet) {
-      reqRet(ccode, rspDg);
+      reqRet(ccode, rspDatagram);
     }
   });
 
@@ -338,6 +340,7 @@ bool Client::Request(const RequestDatagram& reqDg,
 
 int Client::DoRequest(const RequestDatagram& reqDatagram,
                       ResponseDatagram& rspDatagram,
+                      bool allowRedirect,
                       int connectionTimeout,
                       int retry) {
   CURL* pCURL = static_cast<CURL*>(curl_);
@@ -345,22 +348,24 @@ int Client::DoRequest(const RequestDatagram& reqDatagram,
     return NO_CURL_HANDLE;
   }
   curl_easy_setopt(pCURL, CURLOPT_URL, reqDatagram.GetUrl().c_str());
-  curl_easy_setopt(pCURL, CURLOPT_HEADER, 1);
-  curl_easy_setopt(pCURL, CURLOPT_NOBODY, 0);
-  curl_easy_setopt(pCURL, CURLOPT_NOSIGNAL, 1);
+  curl_easy_setopt(pCURL, CURLOPT_HEADER,
+                   0L);  // disable to write header in __BodyWriteCallback__
+  curl_easy_setopt(pCURL, CURLOPT_NOBODY, 0L);
+  curl_easy_setopt(pCURL, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(pCURL, CURLOPT_CONNECTTIMEOUT_MS, connectionTimeout);
   curl_easy_setopt(pCURL, CURLOPT_SSL_VERIFYPEER, 0L);
   curl_easy_setopt(pCURL, CURLOPT_SSL_VERIFYHOST, 0L);
+  curl_easy_setopt(pCURL, CURLOPT_FOLLOWLOCATION, allowRedirect ? 1L : 0L);
 
   switch (reqDatagram.GetMethod()) {
     case RequestDatagram::METHOD::GET:
-      curl_easy_setopt(pCURL, CURLOPT_POST, 0);
+      curl_easy_setopt(pCURL, CURLOPT_POST, 0L);
       break;
     case RequestDatagram::METHOD::POST:
-      curl_easy_setopt(pCURL, CURLOPT_POST, 1);
+      curl_easy_setopt(pCURL, CURLOPT_POST, 1L);
       break;
     case RequestDatagram::METHOD::HEAD:
-      curl_easy_setopt(pCURL, CURLOPT_NOBODY, 1);
+      curl_easy_setopt(pCURL, CURLOPT_NOBODY, 1L);
       break;
     case RequestDatagram::METHOD::CONNECT:
       curl_easy_setopt(pCURL, CURLOPT_CUSTOMREQUEST, "CONNECT");
@@ -384,7 +389,7 @@ int Client::DoRequest(const RequestDatagram& reqDatagram,
   struct curl_slist* headerChunk = nullptr;
   const Headers& headers = reqDatagram.GetHeaders();
   if (headers.size() > 0) {
-    for (auto& it : headers) {
+    for (const auto& it : headers) {
       std::string headerStr = it.first + ": " + it.second;
       headerChunk = curl_slist_append(headerChunk, headerStr.c_str());
     }
@@ -443,13 +448,19 @@ void Client::Abort() {
   abort_.store(true);
   CURL* pCURL = static_cast<CURL*>(curl_);
   if (pCURL) {
-    curl_easy_setopt(pCURL, CURLOPT_TIMEOUT_MS, 1);
+    curl_easy_setopt(pCURL, CURLOPT_TIMEOUT_MS, 1L);
   }
 }
 
 bool Client::Wait(int ms) {
   if (!future_.valid())
     return true;
+  if (ms < 0) {
+    // 10 years
+    return future_.wait_until(std::chrono::system_clock::now() +
+                              std::chrono::minutes(5256000)) ==
+           std::future_status::ready;
+  }
   return future_.wait_for(std::chrono::milliseconds(ms)) ==
          std::future_status::ready;
 }
