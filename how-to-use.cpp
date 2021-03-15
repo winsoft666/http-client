@@ -7,7 +7,7 @@ int main() {
   Client::Cleanup cleanup;
   Client client;
 
-  client.SetProxy("http://localhost:8888");
+  //client.SetProxy("http://localhost:8888");
 
   RequestDatagram reqDatagram;
   reqDatagram.SetMethod(RequestDatagram::METHOD::GET);
