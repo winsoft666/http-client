@@ -38,6 +38,7 @@ class RequestDatagram {
     CONNECT
   };
   RequestDatagram();
+  RequestDatagram(const std::string& url, METHOD m);
   RequestDatagram(const RequestDatagram& that);
   RequestDatagram& operator=(const RequestDatagram& that);
   ~RequestDatagram();
@@ -67,9 +68,9 @@ class RequestDatagram {
 class ResponseDatagram {
  public:
   ResponseDatagram();
-  ~ResponseDatagram();
   ResponseDatagram(const ResponseDatagram& that);
   ResponseDatagram& operator=(const ResponseDatagram& that);
+  ~ResponseDatagram();
 
   int GetCode() const;
   void SetCode(int code);
@@ -125,7 +126,7 @@ class Client {
   //   The return value does not indicate that the request is finished.
   //   Return false only when has another request is doing, other case will return true.
   //
-  bool Request(const RequestDatagram& reqDatagram,
+  bool Request(std::shared_ptr<RequestDatagram> reqDatagram,
                RequestResult ret,
                bool allowRedirect = true,
                int connectionTimeout = 5000,  // ms
@@ -147,7 +148,7 @@ class Client {
   std::string GetProxy() const;
 
  private:
-  int DoRequest(const RequestDatagram& reqDg,
+  int DoRequest(std::shared_ptr<RequestDatagram> reqDg,
                 ResponseDatagram& rspDg,
                 bool allowRedirect,
                 int connectionTimeout,

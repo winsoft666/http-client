@@ -9,10 +9,11 @@ int main() {
 
   //client.SetProxy("http://localhost:8888");
 
-  RequestDatagram reqDatagram;
-  reqDatagram.SetMethod(RequestDatagram::METHOD::GET);
-  reqDatagram.SetUrl("https://www.github.com");
-  reqDatagram.SetHeaders(
+  std::shared_ptr<RequestDatagram> reqDatagram =
+      std::make_shared<RequestDatagram>();
+  reqDatagram->SetMethod(RequestDatagram::METHOD::GET);
+  reqDatagram->SetUrl("https://github.com/winsoft666");
+  reqDatagram->SetHeaders(
       {{"Content-Type", "text/html"}, {"Cache-Control", "no-cache"}});
 
   if (!client.Request(

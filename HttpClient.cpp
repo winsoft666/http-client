@@ -25,6 +25,12 @@ namespace Http {
 RequestDatagram::RequestDatagram()
     : method_(METHOD::GET), bodyData_(nullptr), bodySize_(0) {}
 
+RequestDatagram::RequestDatagram(const std::string& url, METHOD m)
+    : RequestDatagram() {
+  url_ = url;
+  method_ = m;
+}
+
 RequestDatagram::RequestDatagram(const RequestDatagram& that) {
   url_ = that.url_;
   method_ = that.method_;
@@ -62,6 +68,9 @@ RequestDatagram::~RequestDatagram() {
     bodyData_ = nullptr;
   }
   bodySize_ = 0;
+
+  url_.clear();
+  headers_.clear();
 }
 
 RequestDatagram::METHOD RequestDatagram::GetMethod() const {
@@ -160,6 +169,9 @@ ResponseDatagram::~ResponseDatagram() {
 
   bodySize_ = 0;
   bodyCapacity_ = 0;
+
+  headers_.clear();
+  code_ = 0;
 }
 
 int ResponseDatagram::GetCode() const {
@@ -316,15 +328,20 @@ void Client::Uninitialize() {
   }
 }
 
-bool Client::Request(const RequestDatagram& reqDatagram,
+bool Client::Request(std::shared_ptr<RequestDatagram> reqDatagram,
                      RequestResult reqRet,
                      bool allowRedirect /* = true*/,
                      int connectionTimeout /*= 5000*/,
                      int retry /*= 0*/) {
+  if (!reqDatagram) {
+    return false;
+  }
+
   if (future_.valid() && future_.wait_for(std::chrono::milliseconds(0)) !=
                              std::future_status::ready) {
     return false;
   }
+
   abort_.store(false);
   future_ = std::async(std::launch::async, [=]() {
     ResponseDatagram rspDatagram;
@@ -338,7 +355,7 @@ bool Client::Request(const RequestDatagram& reqDatagram,
   return true;
 }
 
-int Client::DoRequest(const RequestDatagram& reqDatagram,
+int Client::DoRequest(std::shared_ptr<RequestDatagram> reqDatagram,
                       ResponseDatagram& rspDatagram,
                       bool allowRedirect,
                       int connectionTimeout,
@@ -346,8 +363,10 @@ int Client::DoRequest(const RequestDatagram& reqDatagram,
   CURL* pCURL = static_cast<CURL*>(curl_);
   if (!pCURL) {
     return NO_CURL_HANDLE;
-  }
-  curl_easy_setopt(pCURL, CURLOPT_URL, reqDatagram.GetUrl().c_str());
+  };
+  assert(reqDatagram);
+  assert(reqDatagram->GetUrl().length() > 0);
+  curl_easy_setopt(pCURL, CURLOPT_URL, reqDatagram->GetUrl().c_str());
   curl_easy_setopt(pCURL, CURLOPT_HEADER,
                    0L);  // disable to write header in __BodyWriteCallback__
   curl_easy_setopt(pCURL, CURLOPT_NOBODY, 0L);
@@ -357,7 +376,7 @@ int Client::DoRequest(const RequestDatagram& reqDatagram,
   curl_easy_setopt(pCURL, CURLOPT_SSL_VERIFYHOST, 0L);
   curl_easy_setopt(pCURL, CURLOPT_FOLLOWLOCATION, allowRedirect ? 1L : 0L);
 
-  switch (reqDatagram.GetMethod()) {
+  switch (reqDatagram->GetMethod()) {
     case RequestDatagram::METHOD::GET:
       curl_easy_setopt(pCURL, CURLOPT_POST, 0L);
       break;
@@ -387,7 +406,7 @@ int Client::DoRequest(const RequestDatagram& reqDatagram,
   }
 
   struct curl_slist* headerChunk = nullptr;
-  const Headers& headers = reqDatagram.GetHeaders();
+  const Headers& headers = reqDatagram->GetHeaders();
   if (headers.size() > 0) {
     for (const auto& it : headers) {
       std::string headerStr = it.first + ": " + it.second;
@@ -396,12 +415,12 @@ int Client::DoRequest(const RequestDatagram& reqDatagram,
     curl_easy_setopt(pCURL, CURLOPT_HTTPHEADER, headerChunk);
   }
 
-  if (reqDatagram.GetBodySize() > 0 && reqDatagram.GetBodyData()) {
-    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDS, reqDatagram.GetBodyData());
-    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDSIZE, reqDatagram.GetBodySize());
+  if (reqDatagram->GetBodySize() > 0 && reqDatagram->GetBodyData()) {
+    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDS, reqDatagram->GetBodyData());
+    curl_easy_setopt(pCURL, CURLOPT_POSTFIELDSIZE, reqDatagram->GetBodySize());
   }
 
-  if (reqDatagram.GetMethod() != RequestDatagram::METHOD::HEAD) {
+  if (reqDatagram->GetMethod() != RequestDatagram::METHOD::HEAD) {
     curl_easy_setopt(pCURL, CURLOPT_WRITEFUNCTION, __BodyWriteCallback__);
     curl_easy_setopt(pCURL, CURLOPT_WRITEDATA, (void*)&rspDatagram);
   }
